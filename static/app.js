@@ -19,6 +19,9 @@ document.querySelector('#clear-selection').addEventListener('click', () => {
 const saveDialog = document.querySelector('#save-photos-dialog');
 const saveStatus = document.querySelector('#save-photos-status');
 const shareButton = document.querySelector('#share-photos');
+const nextPhotos = document.querySelector('#next-photos');
+const manualPhotos = document.querySelector('#manual-photos');
+const manualGrid = document.querySelector('#manual-photos-grid');
 let saveUrls = [], saveIndex = 0, saveFiles = [], saveForm = null, saveRun = 0;
 const phone = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 function canSharePhotos() {
@@ -31,7 +34,16 @@ async function preparePhotos() {
   const run = ++saveRun;
   const start = saveIndex;
   const batch = saveUrls.slice(start, start + 10);
+  saveFiles = [];
+  nextPhotos.hidden = true;
+  manualPhotos.hidden = true;
+  manualGrid.replaceChildren();
   shareButton.disabled = true;
+  shareButton.hidden = !canSharePhotos();
+  if (shareButton.hidden) {
+    saveStatus.textContent = `Fotos ${start + 1}–${start + batch.length} de ${saveUrls.length}. Usa «Ver fotos para guardar».`;
+    return;
+  }
   saveStatus.textContent = `Preparando fotos ${start + 1}–${start + batch.length} de ${saveUrls.length}…`;
   try {
     const files = await Promise.all(batch.map(async (url, index) => {
@@ -46,13 +58,13 @@ async function preparePhotos() {
     saveStatus.textContent = `Fotos ${start + 1}–${start + batch.length} de ${saveUrls.length} listas para guardar.`;
     shareButton.disabled = false;
   } catch (error) {
-    if (run === saveRun) saveStatus.textContent = `${error.message} Puedes descargar el ZIP.`;
+    if (run === saveRun) saveStatus.textContent = `${error.message} Usa «Ver fotos para guardar» o descarga el ZIP.`;
   }
 }
 for (const form of [document.querySelector('#selection-form'), document.querySelector('#download-matches')]) {
   if (!form) continue;
   form.addEventListener('submit', event => {
-    if (!canSharePhotos()) return;
+    if (!phone || typeof saveDialog.showModal !== 'function') return;
     event.preventDefault();
     saveForm = form;
     saveUrls = JSON.parse(form.elements.photos.value);
@@ -63,16 +75,33 @@ for (const form of [document.querySelector('#selection-form'), document.querySel
   });
 }
 shareButton.addEventListener('click', async () => {
-  shareButton.disabled = true;
+  if (!saveFiles.length) return;
+  const run = saveRun;
   try {
-    await navigator.share({files: saveFiles});
-    saveIndex += saveFiles.length;
-    if (saveIndex < saveUrls.length) preparePhotos();
-    else saveStatus.textContent = 'Ya se han compartido todos los grupos. Comprueba que estén guardados en tu aplicación de fotos.';
+    const sharing = navigator.share({files: saveFiles});
+    nextPhotos.hidden = saveIndex + saveFiles.length >= saveUrls.length;
+    saveStatus.textContent = 'En el menú del móvil, elige «Guardar imagen» o «Guardar imágenes». Si no aparece, pulsa «Ver fotos para guardar».';
+    await sharing;
   } catch (error) {
+    if (run !== saveRun) return;
     saveStatus.textContent = error.name === 'AbortError' ? 'No se ha completado. Puedes intentarlo de nuevo.' : 'No se han podido compartir las fotos. Puedes intentarlo de nuevo o descargar el ZIP.';
-    shareButton.disabled = false;
   }
+});
+nextPhotos.addEventListener('click', () => {
+  saveIndex += Math.min(10, saveUrls.length - saveIndex);
+  preparePhotos();
+});
+document.querySelector('#save-manually').addEventListener('click', () => {
+  manualGrid.replaceChildren();
+  for (const url of saveUrls.slice(saveIndex, saveIndex + 10)) {
+    const image = document.createElement('img');
+    image.src = url;
+    image.alt = 'Foto de la boda';
+    manualGrid.append(image);
+  }
+  manualPhotos.hidden = false;
+  nextPhotos.hidden = saveIndex + 10 >= saveUrls.length;
+  saveStatus.textContent = 'Mantén pulsada cada foto de abajo para guardarla en tu móvil.';
 });
 document.querySelector('#download-zip').addEventListener('click', () => {
   if (saveForm) saveForm.submit();
@@ -80,11 +109,36 @@ document.querySelector('#download-zip').addEventListener('click', () => {
 });
 document.querySelector('#close-save-photos').addEventListener('click', () => saveDialog.close());
 saveDialog.addEventListener('close', () => { saveRun++; });
+// Photo previews stay on the same page, preserving the current selection.
+const photoPreview = document.querySelector('#photo-preview-dialog');
+const photoPreviewImage = document.querySelector('#photo-preview-image');
+const selectPreviewPhoto = document.querySelector('#select-preview-photo');
+let previewPhoto = null;
+function updatePreviewSelection() {
+  if (!previewPhoto) return;
+  const selected = selectedPhotos.has(previewPhoto.id);
+  selectPreviewPhoto.textContent = selected ? 'Quitar de la selección' : 'Seleccionar foto';
+  selectPreviewPhoto.setAttribute('aria-pressed', String(selected));
+}
+selectPreviewPhoto.addEventListener('click', () => {
+  if (!previewPhoto) return;
+  if (selectedPhotos.has(previewPhoto.id)) selectedPhotos.delete(previewPhoto.id);
+  else selectedPhotos.set(previewPhoto.id, previewPhoto.url);
+  updateSelection();
+  updatePreviewSelection();
+});
+document.querySelector('#close-photo-preview').addEventListener('click', () => photoPreview.close());
+photoPreview.addEventListener('close', () => {
+  photoPreviewImage.removeAttribute('src');
+  previewPhoto = null;
+});
 const grid = (element, photos) => {
   element.replaceChildren();
   for (const photo of photos) {
-    const card = document.createElement('label');
+    const card = document.createElement('article');
     card.className = 'photo-card';
+    const selectArea = document.createElement('label');
+    selectArea.className = 'photo-select';
     const image = document.createElement('img');
     image.src = photo.url + '&thumb=1';
     image.alt = 'Recuerdo de la boda';
@@ -105,7 +159,19 @@ const grid = (element, photos) => {
     const labelText = document.createElement('span');
     labelText.textContent = 'Seleccionar';
     selectLabel.append(checkbox, labelText);
-    card.append(image, selectLabel);
+    selectArea.append(image, selectLabel);
+    const previewButton = document.createElement('button');
+    previewButton.type = 'button';
+    previewButton.className = 'preview-photo';
+    previewButton.textContent = 'Ver foto';
+    previewButton.setAttribute('aria-label', `Ver foto ${photo.name}`);
+    previewButton.addEventListener('click', () => {
+      previewPhoto = photo;
+      photoPreviewImage.src = photo.url;
+      updatePreviewSelection();
+      photoPreview.showModal();
+    });
+    card.append(selectArea, previewButton);
     element.append(card);
   }
 };
