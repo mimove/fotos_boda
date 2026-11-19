@@ -15,7 +15,7 @@ document.querySelector('#clear-selection').addEventListener('click', () => {
   selectedPhotos.clear();
   updateSelection();
 });
-// Sharing original files lets supported phones offer to save them to Photos.
+// Prepare dated copies for the phone's photo library.
 const saveDialog = document.querySelector('#save-photos-dialog');
 const saveStatus = document.querySelector('#save-photos-status');
 const shareButton = document.querySelector('#share-photos');
@@ -24,6 +24,9 @@ const manualPhotos = document.querySelector('#manual-photos');
 const manualGrid = document.querySelector('#manual-photos-grid');
 let saveUrls = [], saveIndex = 0, saveFiles = [], saveForm = null, saveRun = 0;
 const phone = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+function savePhotoUrl(url) {
+  return `${url}&save=1&tz=${new Date().getTimezoneOffset()}`;
+}
 function canSharePhotos() {
   try {
     return phone && typeof saveDialog.showModal === 'function' && !!navigator.share && !!navigator.canShare &&
@@ -47,10 +50,10 @@ async function preparePhotos() {
   saveStatus.textContent = `Preparando fotos ${start + 1}–${start + batch.length} de ${saveUrls.length}…`;
   try {
     const files = await Promise.all(batch.map(async (url, index) => {
-      const response = await fetch(url);
+      const response = await fetch(savePhotoUrl(url));
       if (!response.ok) throw new Error('No se han podido cargar las fotos.');
       const blob = await response.blob();
-      return new File([blob], `boda-${start + index + 1}.jpg`, {type: blob.type || 'image/jpeg'});
+      return new File([blob], `boda-${start + index + 1}.jpg`, {type: blob.type || 'image/jpeg', lastModified: Date.now()});
     }));
     if (run !== saveRun) return;
     if (!navigator.canShare({files})) throw new Error('El móvil no permite compartir este grupo de fotos.');
@@ -64,6 +67,7 @@ async function preparePhotos() {
 for (const form of [document.querySelector('#selection-form'), document.querySelector('#download-matches')]) {
   if (!form) continue;
   form.addEventListener('submit', event => {
+    form.elements.tz.value = String(new Date().getTimezoneOffset());
     if (!phone || typeof saveDialog.showModal !== 'function') return;
     event.preventDefault();
     saveForm = form;
@@ -95,7 +99,7 @@ document.querySelector('#save-manually').addEventListener('click', () => {
   manualGrid.replaceChildren();
   for (const url of saveUrls.slice(saveIndex, saveIndex + 10)) {
     const image = document.createElement('img');
-    image.src = url;
+    image.src = savePhotoUrl(url);
     image.alt = 'Foto de la boda';
     manualGrid.append(image);
   }
@@ -167,7 +171,7 @@ const grid = (element, photos) => {
     previewButton.setAttribute('aria-label', `Ver foto ${photo.name}`);
     previewButton.addEventListener('click', () => {
       previewPhoto = photo;
-      photoPreviewImage.src = photo.url;
+      photoPreviewImage.src = savePhotoUrl(photo.url);
       updatePreviewSelection();
       photoPreview.showModal();
     });

@@ -30,6 +30,7 @@ const document = {querySelector: selector => nodes[selector.slice(1)], createEle
 const selectedPhotos = new Map([['other', '/photo/other']]);
 let updates = 0;
 function updateSelection() { updates++; }
+function savePhotoUrl(url) { return url + '&save=1&tz=0'; }
 ''' + source + r'''
 const container = new Element('grid');
 grid(container, [{id: 'one', url: '/photo/one?sig=1', name: 'one.jpg'}]);
@@ -38,7 +39,7 @@ const selection = card.children[0];
 const previewButton = card.children[1];
 if (selection.tag !== 'label' || previewButton.tag !== 'button') throw new Error('Separate controls missing');
 previewButton.listeners.click();
-if (!photoPreview.open || photoPreviewImage.src !== '/photo/one?sig=1') throw new Error('Preview did not open original');
+if (!photoPreview.open || photoPreviewImage.src !== '/photo/one?sig=1&save=1&tz=0') throw new Error('Preview did not open a dated copy');
 if (!selectedPhotos.has('other')) throw new Error('Existing selection lost');
 selectPreviewPhoto.listeners.click();
 if (!selectedPhotos.has('one') || selectPreviewPhoto.attributes['aria-pressed'] !== 'true') throw new Error('Selection failed');

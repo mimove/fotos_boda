@@ -9,7 +9,12 @@ import app
 
 class UploadTests(unittest.TestCase):
     def setUp(self):
+        config = patch.dict(app.app.config, {'GUEST_PASSWORD': 'testpassword'})
+        config.start()
+        self.addCleanup(config.stop)
         self.client = app.app.test_client()
+        with self.client.session_transaction() as session:
+            session['guest_auth'] = app.guest_token('testpassword')
         self.modules = {'face_recognition': types.SimpleNamespace(face_encodings=lambda image: []),
                         'numpy': types.SimpleNamespace(asarray=lambda image: image)}
 

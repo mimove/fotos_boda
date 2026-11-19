@@ -11,7 +11,7 @@ JSC = '/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/js
 class SaveFlowTests(unittest.TestCase):
     def test_share_can_be_retried_and_manual_batches_advance(self):
         source = (ROOT / 'static/app.js').read_text()
-        source = source.split('// Sharing original files', 1)[1].split('\n', 1)[1].split('// Photo previews', 1)[0]
+        source = source.split('// Prepare dated copies', 1)[1].split('\n', 1)[1].split('// Photo previews', 1)[0]
         harness = r'''
 class Element {
   constructor() { this.listeners = {}; this.hidden = false; this.disabled = false; this.children = []; this.textContent = ''; }
@@ -25,7 +25,7 @@ const ids = ['save-photos-dialog', 'save-photos-status', 'share-photos', 'next-p
   'manual-photos', 'manual-photos-grid', 'save-manually', 'download-zip', 'close-save-photos', 'selection-form'];
 const nodes = Object.fromEntries(ids.map(id => [id, new Element()]));
 const urls = Array.from({length: 11}, (_, i) => '/photo/' + i);
-nodes['selection-form'].elements = {photos: {value: JSON.stringify(urls)}};
+nodes['selection-form'].elements = {photos: {value: JSON.stringify(urls)}, tz: {value: ''}};
 const document = {
   querySelector: selector => nodes[selector.slice(1)] || null,
   createElement: () => new Element()
@@ -47,7 +47,7 @@ async function test() {
   for (let i = 0; i < 20; i++) await Promise.resolve();
   if (!nextPhotos.hidden || shareButton.disabled) throw new Error('Last batch not ready');
   nodes['save-manually'].listeners.click();
-  if (manualGrid.children.length !== 1 || manualGrid.children[0].src !== '/photo/10') throw new Error('Wrong final batch');
+  if (manualGrid.children.length !== 1 || !manualGrid.children[0].src.startsWith('/photo/10&save=1&tz=')) throw new Error('Wrong final batch');
   saveDialog.close();
   navigator.canShare = () => false;
   nodes['selection-form'].listeners.submit({preventDefault() {}});

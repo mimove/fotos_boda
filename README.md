@@ -13,6 +13,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 export ADMIN_PASSWORD='choose-a-long-unique-password'
 export APP_SECRET='choose-a-different-long-random-secret'
+export GUEST_PASSWORD='choose-a-random-guest-password'
 python index_photos.py
 python app.py
 ```
@@ -25,16 +26,16 @@ On a phone, camera access requires HTTPS or localhost. The local server binds to
 
 Run `docker compose up -d --build` on the VM. The app is available only on `127.0.0.1:5000`; never publish its port to the LAN or the internet. Keep the `files/` and `data/` directories private and back them up, along with `.env`. `files/` is mounted read-only; `data/` stores the face index and gallery selection. The container runs as UID 1000, which must be able to read the photos and write to `data/`. Compose sets `OPENBLAS_CORETYPE=CORE2` for compatibility with generic virtual CPUs and limits OpenBLAS to one thread.
 
-Create `.env` with restrictive permissions, using two independent random secrets, and keep `APP_SECRET` stable across restarts:
+Create `.env` with restrictive permissions and independent random secrets. Keep `APP_SECRET` stable across restarts:
 
 ```sh
 umask 077
-printf 'APP_SECRET=%s\nADMIN_PASSWORD=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 24)" > .env
+printf 'APP_SECRET=%s\nADMIN_PASSWORD=%s\nGUEST_PASSWORD=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 24)" "$(openssl rand -hex 6)" > .env
 ```
 
-Do this only when `.env` does not already exist. Open the administrator page at `/admin` using any username and the password from `.env`. To rebuild the face index after adding photos, run `docker compose exec wedding python index_photos.py`. Maintain backups of the original media, the index and selection. Rebuild the image periodically to install container security updates.
+Do this only when `.env` does not already exist. Share `GUEST_PASSWORD` with guests; the gallery and photo URLs require it. The application fails closed if it is missing and limits repeated login failures. Changing it invalidates guest sessions after the container is recreated. Open the administrator page at `/admin` using any username and `ADMIN_PASSWORD`, after guest login. To rebuild the face index after adding photos, run `docker compose exec wedding python index_photos.py`. Maintain backups of the original media, the index and selection. Rebuild the image periodically to install container security updates.
 
-Set up a Cloudflare Tunnel public hostname targeting `http://127.0.0.1:5000`. Protect both `/admin` and `/api/admin/photos` with Cloudflare Access and rate-limit face matching before publishing. Cloudflare Access for the whole site can additionally limit viewing to invited guests. Face recognition can reveal other people in group photos and is not an identity check. Publish only with guests' consent. See the [Cloudflare Tunnel setup guide](https://developers.cloudflare.com/tunnel/get-started/).
+Set up a Cloudflare Tunnel public hostname targeting `http://127.0.0.1:5000`. Protect both `/admin` and `/api/admin/photos` with Cloudflare Access and rate-limit face matching and login before publishing. Purge previously cached public content after enabling the password wall, and ensure Cloudflare cache rules do not override the app's private no-store headers. Face recognition can reveal other people in group photos and is not an identity check. Publish only with guests' consent. See the [Cloudflare Tunnel setup guide](https://developers.cloudflare.com/tunnel/get-started/).
 
 ### Automatic updates
 
