@@ -37,7 +37,7 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
 )
 EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
-FACE_DISTANCE_THRESHOLD = 0.65
+FACE_DISTANCE_THRESHOLD = 0.60
 Image.MAX_IMAGE_PIXELS = 50_000_000
 XMP_HEADER = b'http://ns.adobe.com/xap/1.0/\x00'
 XMP_DATE_TAGS = rb'(?:photoshop:DateCreated|xmp:CreateDate|xmp:ModifyDate|xmp:MetadataDate|exif:DateTimeOriginal|exif:DateTimeDigitized|tiff:DateTime)'

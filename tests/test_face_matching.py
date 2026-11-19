@@ -16,8 +16,8 @@ class FaceMatchingTests(unittest.TestCase):
     def test_matches_within_relaxed_distance_and_excludes_more_distant_faces(self):
         with tempfile.TemporaryDirectory() as directory:
             index = [
-                {'id': 'near', 'encodings': [[0.64] + [0.0] * 127]},
-                {'id': 'far', 'encodings': [[0.66] + [0.0] * 127]},
+                {'id': 'near', 'encodings': [[0.59] + [0.0] * 127]},
+                {'id': 'far', 'encodings': [[0.61] + [0.0] * 127]},
             ]
             (Path(directory) / 'faces.json').write_text(json.dumps(index))
             fake_face = types.SimpleNamespace(
