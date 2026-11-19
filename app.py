@@ -8,6 +8,7 @@ import secrets
 import time
 import tempfile
 import zipfile
+import warnings
 from urllib.parse import parse_qs, urlsplit
 from functools import wraps
 from pathlib import Path
@@ -24,6 +25,7 @@ app.config['MAX_CONTENT_LENGTH'] = 12 * 1024 * 1024
 SECRET = os.environ.get('APP_SECRET', 'local-development-only').encode()
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '')
 EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
+Image.MAX_IMAGE_PIXELS = 50_000_000
 
 
 def photos():
@@ -122,11 +124,16 @@ def match():
     except ImportError:
         return jsonify(error='El reconocimiento facial aún no está disponible. Ponte en contacto con los organizadores.'), 503
     try:
-        image = ImageOps.exif_transpose(Image.open(upload.stream)).convert('RGB')
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(upload.stream) as source:
+                if source.format not in {'JPEG', 'PNG', 'WEBP'} or source.width * source.height > Image.MAX_IMAGE_PIXELS:
+                    raise ValueError('Unsupported image format or dimensions')
+                image = ImageOps.exif_transpose(source).convert('RGB')
         image.thumbnail((1600, 1600))
         encodings = face_recognition.face_encodings(np.asarray(image))
-    except (OSError, ValueError):
-        return jsonify(error='No se puede leer la imagen. Prueba con un archivo JPEG o PNG.'), 400
+    except (OSError, ValueError, Image.DecompressionBombError, Image.DecompressionBombWarning):
+        return jsonify(error='No se puede leer la imagen. Usa un JPEG, PNG o WebP de hasta 50 megapíxeles.'), 400
     if len(encodings) != 1:
         return jsonify(error='Usa una foto clara en la que aparezca una sola cara.'), 400
     try:

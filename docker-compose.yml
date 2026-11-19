@@ -1,0 +1,18 @@
+services:
+  wedding:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"
+    environment:
+      APP_SECRET: ${APP_SECRET:?Set APP_SECRET in .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      OPENBLAS_CORETYPE: CORE2
+      OPENBLAS_NUM_THREADS: "1"
+    volumes:
+      - ./files:/photos:ro
+      - ./data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

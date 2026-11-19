@@ -1,0 +1,7 @@
+[Unit]
+Description=Deploy wedding photos from GitHub main
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/wedding-auto-deploy

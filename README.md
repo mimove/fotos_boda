@@ -21,33 +21,25 @@ Open http://127.0.0.1:5000. To choose public highlights, open http://127.0.0.1:5
 
 On a phone, camera access requires HTTPS or localhost. The local server binds to this computer only. Use the phone's photo picker for initial testing after deployment, or configure HTTPS for a local network test.
 
-## Deploy to a public URL
+## Deploy behind Cloudflare Tunnel
 
-The included Dockerfile provides a starting point for a Linux server with Docker and a domain name. This is not yet a managed deployment: you need a server with enough storage for the photos, index, Docker build, and backups. Publish only with consent. The public gallery is visible to everyone, and anyone able to use the face search can obtain matching group photos. Signed image links expire after one hour but recipients can save or share images. The app has no guest authentication or rate limiting; add access controls and rate limiting at your reverse proxy before public use. Protect the administrator endpoint, and use HTTPS for all traffic.
+Run `docker compose up -d --build` on the VM. The app is available only on `127.0.0.1:5000`; never publish its port to the LAN or the internet. Keep the `files/` and `data/` directories private and back them up, along with `.env`. `files/` is mounted read-only; `data/` stores the face index and gallery selection. The container runs as UID 1000, which must be able to read the photos and write to `data/`. Compose sets `OPENBLAS_CORETYPE=CORE2` for compatibility with generic virtual CPUs and limits OpenBLAS to one thread.
 
-1. Create a Linux server, install Docker and a reverse proxy such as Caddy, and point a domain's DNS record to the server. Allow ports 80 and 443 through the server firewall. Keep port 5000 private.
-2. Securely transfer the app files, `files/`, and the locally generated `data/` directory to a private directory on the server. Keep their directory layout. Do not publish `data/` or `files/` as a static web directory.
-3. In that directory, build and run the container. Set strong, different secrets in the shell without putting them in source control. Persist both mounted directories and keep `APP_SECRET` stable across restarts.
+Create `.env` with restrictive permissions, using two independent random secrets, and keep `APP_SECRET` stable across restarts:
 
 ```sh
-docker build -t wedding-photos .
-read -rs ADMIN_PASSWORD; export ADMIN_PASSWORD; echo
-read -rs APP_SECRET; export APP_SECRET; echo
-docker run -d --name wedding-photos --restart unless-stopped \
-  -p 127.0.0.1:5000:5000 \
-  -e ADMIN_PASSWORD -e APP_SECRET \
-  -v "$(pwd)/files:/photos:ro" -v "$(pwd)/data:/data" \
-  wedding-photos
+umask 077
+printf 'APP_SECRET=%s\nADMIN_PASSWORD=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 24)" > .env
 ```
 
-4. Configure Caddy for your domain, replacing `wedding.example.com` with your actual domain:
+Do this only when `.env` does not already exist. Open the administrator page at `/admin` using any username and the password from `.env`. To rebuild the face index after adding photos, run `docker compose exec wedding python index_photos.py`. Maintain backups of the original media, the index and selection. Rebuild the image periodically to install container security updates.
 
-```caddyfile
-wedding.example.com {
-    reverse_proxy 127.0.0.1:5000
-}
-```
+Set up a Cloudflare Tunnel public hostname targeting `http://127.0.0.1:5000`. Protect both `/admin` and `/api/admin/photos` with Cloudflare Access and rate-limit face matching before publishing. Cloudflare Access for the whole site can additionally limit viewing to invited guests. Face recognition can reveal other people in group photos and is not an identity check. Publish only with guests' consent. See the [Cloudflare Tunnel setup guide](https://developers.cloudflare.com/tunnel/get-started/).
 
-5. Start or reload Caddy. Once DNS and TLS are working, open `https://wedding.example.com`, test matching and organizer selection, then share that URL. See the [Caddy documentation](https://caddyserver.com/docs/) for installation and HTTPS setup.
+### Automatic updates
 
-To index on the server instead, run `docker exec wedding-photos python index_photos.py`. Back up `data/` and the original photos securely. Delete the container and sensitive backups when they are no longer needed.
+The VM runs a user systemd timer that checks GitHub's `main` branch about once per minute using its read-only deploy key. When the commit changes, it builds and starts Compose from `~/apps/fotos_boda-auto`, a separate checkout. That checkout links to the existing `.env`, `files/`, and `data/` in `~/apps/fotos_boda`. It never copies these into Git or replaces them. Only fast-forward updates are deployed; a failed build is retried on the next check. The updater waits until a commit with `docker-compose.yml` is present on `main`.
+
+To enable the timer on another VM, install `deploy/auto-deploy.sh` as `~/.local/bin/wedding-auto-deploy`, copy the two unit files from `deploy/` to `~/.config/systemd/user/`, run `systemctl --user daemon-reload` and `systemctl --user enable --now wedding-auto-deploy.timer`, and enable user lingering with `loginctl enable-linger "$USER"`. The VM must have Docker, the GitHub deploy key and persistent directories configured first.
+
+Check updates with `systemctl --user status wedding-auto-deploy.timer` and `journalctl --user -u wedding-auto-deploy.service -n 50 --no-pager`. Push only reviewed changes to `main`: they are deployed automatically. Container rebuilds can briefly interrupt the site.

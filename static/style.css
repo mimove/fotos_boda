@@ -20,3 +20,6 @@ main{overflow:visible}
 /* A full-width opaque bar prevents images showing around the sticky menu. */
 .gallery-nav{width:100%;margin:0;padding:12px max(7%,calc((100% - 1152px)/2));background:#f0e3ce;isolation:isolate}
 @media(max-width:700px){.gallery-nav{padding:8px max(6%,env(safe-area-inset-right)) 8px max(6%,env(safe-area-inset-left));background:#f0e3ce}}
+
+/* Keep the camera controls close to the preview on phones. */
+@media(max-width:700px){#camera-preview{height:min(55vw,240px);object-fit:cover}#camera-panel{margin-top:14px}#camera-panel .button{margin-top:12px}}
