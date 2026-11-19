@@ -27,7 +27,15 @@ class Element {
 }
 const names = ['photo-preview-dialog', 'photo-preview-image', 'photo-preview-placeholder', 'select-preview-photo', 'close-photo-preview', 'preview-previous', 'preview-next'];
 const nodes = Object.fromEntries(names.map(name => [name, new Element(name)]));
-const document = {querySelector: selector => nodes[selector.slice(1)], createElement: tag => new Element(tag)};
+let canvasDraws = 0;
+const document = {querySelector: selector => nodes[selector.slice(1)], createElement: tag => {
+  const element = new Element(tag);
+  if (tag === 'canvas') {
+    element.getContext = () => ({drawImage() { canvasDraws++; }});
+    element.toDataURL = () => 'data:image/jpeg;base64,dGVzdA==';
+  }
+  return element;
+}};
 const selectedPhotos = new Map([['other', '/photo/other']]);
 let updates = 0;
 function updateSelection() { updates++; }
@@ -42,10 +50,14 @@ grid(nextSection, [photos[1]]);
 const card = container.children[0];
 const selection = card.children[0];
 const previewButton = card.children[1];
+const thumbnail = selection.children[0];
+thumbnail.complete = true;
+thumbnail.naturalWidth = 600;
+thumbnail.naturalHeight = 400;
 if (selection.tag !== 'label' || previewButton.tag !== 'button') throw new Error('Separate controls missing');
 previewButton.listeners.click();
 if (!photoPreview.open || photoPreviewImage.src !== '/photo/one?sig=1&save=1&tz=0') throw new Error('Preview did not open a dated copy');
-if (nodes['photo-preview-placeholder'].src !== '/photo/one?sig=1&thumb=1') throw new Error('Preview placeholder missing');
+if (nodes['photo-preview-placeholder'].src !== 'data:image/jpeg;base64,dGVzdA==' || canvasDraws !== 1) throw new Error('Loaded thumbnail not reused');
 if (!nodes['preview-previous'].disabled || nodes['preview-next'].disabled) throw new Error('Wrong navigation bounds');
 if (!selectedPhotos.has('other')) throw new Error('Existing selection lost');
 selectPreviewPhoto.listeners.click();
@@ -53,6 +65,7 @@ if (!selectedPhotos.has('one') || selectPreviewPhoto.attributes['aria-pressed'] 
 const previousLoad = photoPreviewImage.onload;
 nodes['preview-next'].listeners.click();
 if (photoPreviewImage.src !== '/photo/two?sig=2&save=1&tz=0' || !nodes['preview-next'].disabled) throw new Error('Next photo failed');
+if (photoPreviewPlaceholder.src !== '/photo/two?sig=2&thumb=1') throw new Error('Unloaded thumbnail fallback failed');
 if (!selectedPhotos.has('one') || selectPreviewPhoto.attributes['aria-pressed'] !== 'false') throw new Error('Selection lost when navigating');
 previousLoad();
 if (photoPreviewImage.classList.contains('is-ready')) throw new Error('Old image load revealed a new image too soon');

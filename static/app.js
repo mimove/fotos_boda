@@ -116,12 +116,30 @@ saveDialog.addEventListener('close', () => { saveRun++; });
 // Photo previews stay on the same page, preserving the current selection.
 const photoPreview = document.querySelector('#photo-preview-dialog');
 const photoPreviewImage = document.querySelector('#photo-preview-image');
+photoPreviewImage.fetchPriority = 'high';
 const photoPreviewPlaceholder = document.querySelector('#photo-preview-placeholder');
 const selectPreviewPhoto = document.querySelector('#select-preview-photo');
 const previousPreview = document.querySelector('#preview-previous');
 const nextPreview = document.querySelector('#preview-next');
+const previewThumbnails = new Map();
 let previewPhotos = [], previewIndex = -1;
 let previewPhoto = null;
+function previewThumbnail(photo) {
+  const image = previewThumbnails.get(photo.id);
+  if (image && image.complete && image.naturalWidth && image.naturalHeight) {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.drawImage(image, 0, 0);
+        return canvas.toDataURL('image/jpeg', 0.82);
+      }
+    } catch (_) { /* Fall back to the normal thumbnail request. */ }
+  }
+  return photo.url + '&thumb=1';
+}
 function updatePreviewSelection() {
   if (!previewPhoto) return;
   const selected = selectedPhotos.has(previewPhoto.id);
@@ -134,7 +152,7 @@ function showPreviewAt(index) {
   previewPhoto = previewPhotos[index];
   previousPreview.disabled = index === 0;
   nextPreview.disabled = index === previewPhotos.length - 1;
-  photoPreviewPlaceholder.src = previewPhoto.url + '&thumb=1';
+  photoPreviewPlaceholder.src = previewThumbnail(previewPhoto);
   photoPreviewImage.classList.remove('is-ready');
   const fullUrl = savePhotoUrl(previewPhoto.url);
   photoPreviewImage.onload = () => {
@@ -175,6 +193,9 @@ const grid = (element, photos) => {
     image.src = photo.url + '&thumb=1';
     image.alt = 'Recuerdo de la boda';
     image.loading = 'lazy';
+    image.decoding = 'async';
+    image.fetchPriority = 'low';
+    previewThumbnails.set(photo.id, image);
     const selectLabel = document.createElement('span');
     selectLabel.className = 'select-photo';
     const checkbox = document.createElement('input');
@@ -211,6 +232,7 @@ updateSelection();
 if (document.querySelector('#gallery-empty')) {
 const galleryGroups = ['desayuno-color', 'desayuno-bn', 'iglesia-color', 'iglesia-bn', 'banquete-color', 'banquete-bn'];
 fetch('/api/gallery').then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(photos => {
+  previewThumbnails.clear();
   previewPhotos = galleryGroups.flatMap(group => photos.filter(photo => photo.category === group));
   for (const group of galleryGroups) {
     const entries = photos.filter(photo => photo.category === group);
@@ -250,6 +272,7 @@ async function searchPhoto(file) {
     const response = await fetch('/api/match', {method:'POST', body});
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Algo ha salido mal.');
+    previewThumbnails.clear();
     previewPhotos = data;
     grid(document.querySelector('#matches'), data);
     document.querySelector('#results-count').textContent = data.length === 1 ? '1 foto encontrada' : `${data.length} fotos encontradas`;
