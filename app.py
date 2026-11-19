@@ -37,6 +37,7 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
 )
 EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
+FACE_DISTANCE_THRESHOLD = 0.65
 Image.MAX_IMAGE_PIXELS = 50_000_000
 XMP_HEADER = b'http://ns.adobe.com/xap/1.0/\x00'
 XMP_DATE_TAGS = rb'(?:photoshop:DateCreated|xmp:CreateDate|xmp:ModifyDate|xmp:MetadataDate|exif:DateTimeOriginal|exif:DateTimeDigitized|tiff:DateTime)'
@@ -317,7 +318,7 @@ def match():
         return jsonify(error='Las fotos aún se están preparando. Ponte en contacto con los organizadores.'), 503
     matches = []
     for entry in index:
-        if entry['encodings'] and min(face_recognition.face_distance(np.array(entry['encodings']), encodings[0])) <= 0.55:
+        if entry['encodings'] and min(face_recognition.face_distance(np.array(entry['encodings']), encodings[0])) <= FACE_DISTANCE_THRESHOLD:
             matches.append(entry['id'])
     return jsonify(items(matches))
 
