@@ -15,16 +15,17 @@ class PhotoPreviewTests(unittest.TestCase):
         source = source.split('\nupdateSelection();\nif (document.querySelector', 1)[0]
         harness = r'''
 class Element {
-  constructor(tag) { this.tag = tag; this.children = []; this.listeners = {}; this.dataset = {}; this.attributes = {}; }
+  constructor(tag) { this.tag = tag; this.children = []; this.listeners = {}; this.dataset = {}; this.attributes = {}; const classes = new Set(); this.classList = {add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x)}; }
   addEventListener(name, callback) { this.listeners[name] = callback; }
   append(...children) { this.children.push(...children); }
   replaceChildren() { this.children = []; }
   setAttribute(name, value) { this.attributes[name] = value; }
+  getAttribute(name) { return this[name] || this.attributes[name]; }
   removeAttribute(name) { delete this[name]; }
   showModal() { this.open = true; }
   close() { this.open = false; if (this.listeners.close) this.listeners.close(); }
 }
-const names = ['photo-preview-dialog', 'photo-preview-image', 'select-preview-photo', 'close-photo-preview'];
+const names = ['photo-preview-dialog', 'photo-preview-image', 'photo-preview-placeholder', 'select-preview-photo', 'close-photo-preview', 'preview-previous', 'preview-next'];
 const nodes = Object.fromEntries(names.map(name => [name, new Element(name)]));
 const document = {querySelector: selector => nodes[selector.slice(1)], createElement: tag => new Element(tag)};
 const selectedPhotos = new Map([['other', '/photo/other']]);
@@ -33,16 +34,36 @@ function updateSelection() { updates++; }
 function savePhotoUrl(url) { return url + '&save=1&tz=0'; }
 ''' + source + r'''
 const container = new Element('grid');
-grid(container, [{id: 'one', url: '/photo/one?sig=1', name: 'one.jpg'}]);
+const photos = [{id: 'one', url: '/photo/one?sig=1', name: 'one.jpg'}, {id: 'two', url: '/photo/two?sig=2', name: 'two.jpg'}];
+previewPhotos = photos;
+grid(container, [photos[0]]);
+const nextSection = new Element('grid');
+grid(nextSection, [photos[1]]);
 const card = container.children[0];
 const selection = card.children[0];
 const previewButton = card.children[1];
 if (selection.tag !== 'label' || previewButton.tag !== 'button') throw new Error('Separate controls missing');
 previewButton.listeners.click();
 if (!photoPreview.open || photoPreviewImage.src !== '/photo/one?sig=1&save=1&tz=0') throw new Error('Preview did not open a dated copy');
+if (nodes['photo-preview-placeholder'].src !== '/photo/one?sig=1&thumb=1') throw new Error('Preview placeholder missing');
+if (!nodes['preview-previous'].disabled || nodes['preview-next'].disabled) throw new Error('Wrong navigation bounds');
 if (!selectedPhotos.has('other')) throw new Error('Existing selection lost');
 selectPreviewPhoto.listeners.click();
 if (!selectedPhotos.has('one') || selectPreviewPhoto.attributes['aria-pressed'] !== 'true') throw new Error('Selection failed');
+const previousLoad = photoPreviewImage.onload;
+nodes['preview-next'].listeners.click();
+if (photoPreviewImage.src !== '/photo/two?sig=2&save=1&tz=0' || !nodes['preview-next'].disabled) throw new Error('Next photo failed');
+if (!selectedPhotos.has('one') || selectPreviewPhoto.attributes['aria-pressed'] !== 'false') throw new Error('Selection lost when navigating');
+previousLoad();
+if (photoPreviewImage.classList.contains('is-ready')) throw new Error('Old image load revealed a new image too soon');
+photoPreviewImage.onload();
+if (!photoPreviewImage.classList.contains('is-ready')) throw new Error('Full image not shown after load');
+nodes['preview-previous'].listeners.click();
+if (photoPreviewImage.src !== '/photo/one?sig=1&save=1&tz=0') throw new Error('Previous photo failed');
+let prevented = false;
+photoPreview.listeners.keydown({key:'ArrowRight', preventDefault() { prevented = true; }});
+if (!prevented || photoPreviewImage.src !== '/photo/two?sig=2&save=1&tz=0') throw new Error('Keyboard navigation failed');
+nodes['preview-previous'].listeners.click();
 nodes['close-photo-preview'].listeners.click();
 if (photoPreview.open || !selectedPhotos.has('one') || !selectedPhotos.has('other')) throw new Error('Selection lost on close');
 previewButton.listeners.click();

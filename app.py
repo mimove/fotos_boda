@@ -13,7 +13,7 @@ import zipfile
 import warnings
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, unquote, urlsplit
-from functools import wraps
+from functools import lru_cache, wraps
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, session, url_for
@@ -174,9 +174,38 @@ def dated_photo(path, stamp):
     return update_xmp_dates(data, stamp, piexif.dump(exif))
 
 
+def _scan_photo_paths(root):
+    return {hashlib.sha256(str(p.relative_to(root)).encode()).hexdigest()[:24]: p
+            for p in sorted(root.rglob('*')) if p.is_file() and p.suffix.lower() in EXTENSIONS}
+
+
+@lru_cache(maxsize=4)
+def _cached_photo_paths(root, interval):
+    return _scan_photo_paths(root)
+
+
 def photos():
-    return {hashlib.sha256(str(p.relative_to(PHOTO_ROOT)).encode()).hexdigest()[:24]: p
-            for p in sorted(PHOTO_ROOT.rglob('*')) if p.is_file() and p.suffix.lower() in EXTENSIONS}
+    # Refresh new or removed files within 30 seconds without rescanning on every image request.
+    return _cached_photo_paths(PHOTO_ROOT, int(time.monotonic() // 30))
+
+
+def _render_thumbnail(path):
+    with Image.open(path) as image:
+        image = ImageOps.exif_transpose(image).convert('RGB')
+        image.thumbnail((600, 600))
+        output = io.BytesIO()
+        image.save(output, format='JPEG', quality=78)
+        return output.getvalue()
+
+
+@lru_cache(maxsize=512)
+def _cached_thumbnail(path, mtime_ns, size):
+    return _render_thumbnail(path)
+
+
+def thumbnail_bytes(path):
+    stat = path.stat()
+    return _cached_thumbnail(path, stat.st_mtime_ns, stat.st_size)
 
 
 def gallery_category(path):
@@ -296,20 +325,14 @@ def match():
 @app.get('/photo/<photo_id>')
 def photo(photo_id):
     path = photos().get(photo_id)
-    if path is None:
+    if path is None or not path.is_file():
         abort(404)
     expires = request.args.get('expires', '')
     signature = request.args.get('sig', '')
     if not valid_signature(photo_id, expires, signature):
         abort(403)
     if request.args.get('thumb') == '1':
-        with Image.open(path) as image:
-            image = ImageOps.exif_transpose(image).convert('RGB')
-            image.thumbnail((600, 600))
-            output = io.BytesIO()
-            image.save(output, format='JPEG', quality=78)
-            output.seek(0)
-        return send_file(output, mimetype='image/jpeg', max_age=3600)
+        return send_file(io.BytesIO(thumbnail_bytes(path)), mimetype='image/jpeg')
     if request.args.get('save') == '1':
         stamp = download_time(request.args.get('tz', '0'))
         output = io.BytesIO(dated_photo(path, stamp))

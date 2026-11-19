@@ -116,7 +116,11 @@ saveDialog.addEventListener('close', () => { saveRun++; });
 // Photo previews stay on the same page, preserving the current selection.
 const photoPreview = document.querySelector('#photo-preview-dialog');
 const photoPreviewImage = document.querySelector('#photo-preview-image');
+const photoPreviewPlaceholder = document.querySelector('#photo-preview-placeholder');
 const selectPreviewPhoto = document.querySelector('#select-preview-photo');
+const previousPreview = document.querySelector('#preview-previous');
+const nextPreview = document.querySelector('#preview-next');
+let previewPhotos = [], previewIndex = -1;
 let previewPhoto = null;
 function updatePreviewSelection() {
   if (!previewPhoto) return;
@@ -124,6 +128,27 @@ function updatePreviewSelection() {
   selectPreviewPhoto.textContent = selected ? 'Quitar de la selección' : 'Seleccionar foto';
   selectPreviewPhoto.setAttribute('aria-pressed', String(selected));
 }
+function showPreviewAt(index) {
+  if (index < 0 || index >= previewPhotos.length) return;
+  previewIndex = index;
+  previewPhoto = previewPhotos[index];
+  previousPreview.disabled = index === 0;
+  nextPreview.disabled = index === previewPhotos.length - 1;
+  photoPreviewPlaceholder.src = previewPhoto.url + '&thumb=1';
+  photoPreviewImage.classList.remove('is-ready');
+  const fullUrl = savePhotoUrl(previewPhoto.url);
+  photoPreviewImage.onload = () => {
+    if (photoPreviewImage.getAttribute('src') === fullUrl) photoPreviewImage.classList.add('is-ready');
+  };
+  photoPreviewImage.src = fullUrl;
+  updatePreviewSelection();
+}
+previousPreview.addEventListener('click', () => showPreviewAt(previewIndex - 1));
+nextPreview.addEventListener('click', () => showPreviewAt(previewIndex + 1));
+photoPreview.addEventListener('keydown', event => {
+  if (event.key === 'ArrowLeft') { event.preventDefault(); showPreviewAt(previewIndex - 1); }
+  if (event.key === 'ArrowRight') { event.preventDefault(); showPreviewAt(previewIndex + 1); }
+});
 selectPreviewPhoto.addEventListener('click', () => {
   if (!previewPhoto) return;
   if (selectedPhotos.has(previewPhoto.id)) selectedPhotos.delete(previewPhoto.id);
@@ -134,7 +159,10 @@ selectPreviewPhoto.addEventListener('click', () => {
 document.querySelector('#close-photo-preview').addEventListener('click', () => photoPreview.close());
 photoPreview.addEventListener('close', () => {
   photoPreviewImage.removeAttribute('src');
+  photoPreviewPlaceholder.removeAttribute('src');
+  photoPreviewImage.classList.remove('is-ready');
   previewPhoto = null;
+  previewIndex = -1;
 });
 const grid = (element, photos) => {
   element.replaceChildren();
@@ -170,9 +198,9 @@ const grid = (element, photos) => {
     previewButton.textContent = 'Ver foto';
     previewButton.setAttribute('aria-label', `Ver foto ${photo.name}`);
     previewButton.addEventListener('click', () => {
-      previewPhoto = photo;
-      photoPreviewImage.src = savePhotoUrl(photo.url);
-      updatePreviewSelection();
+      const index = previewPhotos.findIndex(item => item.id === photo.id);
+      if (index < 0) return;
+      showPreviewAt(index);
       photoPreview.showModal();
     });
     card.append(selectArea, previewButton);
@@ -183,6 +211,7 @@ updateSelection();
 if (document.querySelector('#gallery-empty')) {
 const galleryGroups = ['desayuno-color', 'desayuno-bn', 'iglesia-color', 'iglesia-bn', 'banquete-color', 'banquete-bn'];
 fetch('/api/gallery').then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(photos => {
+  previewPhotos = galleryGroups.flatMap(group => photos.filter(photo => photo.category === group));
   for (const group of galleryGroups) {
     const entries = photos.filter(photo => photo.category === group);
     grid(document.querySelector(`#gallery-${group}`), entries);
@@ -221,6 +250,7 @@ async function searchPhoto(file) {
     const response = await fetch('/api/match', {method:'POST', body});
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Algo ha salido mal.');
+    previewPhotos = data;
     grid(document.querySelector('#matches'), data);
     document.querySelector('#results-count').textContent = data.length === 1 ? '1 foto encontrada' : `${data.length} fotos encontradas`;
     document.querySelector('#match-photos').value = JSON.stringify(data.map(photo => photo.url));
