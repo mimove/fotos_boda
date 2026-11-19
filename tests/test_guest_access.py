@@ -1,5 +1,8 @@
 import tempfile
 import unittest
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from http.cookies import SimpleCookie
 from pathlib import Path
 from unittest.mock import patch
 import app
@@ -32,6 +35,12 @@ class GuestAccessTests(unittest.TestCase):
         self.assertEqual(response.headers['Location'], '/galeria')
         self.assertIn('Secure', response.headers['Set-Cookie'])
         self.assertIn('HttpOnly', response.headers['Set-Cookie'])
+        cookie = SimpleCookie()
+        cookie.load(response.headers['Set-Cookie'])
+        expires = parsedate_to_datetime(cookie['session']['expires'])
+        remaining = (expires - datetime.now(timezone.utc)).total_seconds()
+        self.assertGreater(remaining, 29 * 86400)
+        self.assertLessEqual(remaining, 30 * 86400)
         self.assertIn('no-store', self.client.get('/galeria').headers['Cache-Control'])
 
     def test_wrong_password_and_unsafe_redirect(self):
