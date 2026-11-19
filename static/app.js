@@ -184,6 +184,9 @@ document.querySelector('#open-camera').addEventListener('click', async () => {
     preview.srcObject = stream;
     cameraPanel.hidden = false;
     status.textContent = 'Coloca tu cara en el encuadre y haz una foto.';
+    if (window.matchMedia('(max-width: 700px)').matches) {
+      requestAnimationFrame(() => status.scrollIntoView({behavior: 'smooth', block: 'start'}));
+    }
   } catch (error) {
     if (requestId !== cameraRequest) return;
     status.textContent = error.name === 'NotAllowedError' ? 'Se ha denegado el acceso a la cámara. Permítelo en el navegador o elige una foto.' : 'No se ha podido abrir la cámara. Comprueba que esté disponible o elige una foto.';

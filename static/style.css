@@ -23,3 +23,5 @@ main{overflow:visible}
 
 /* Keep the camera controls close to the preview on phones. */
 @media(max-width:700px){#camera-preview{height:min(55vw,240px);object-fit:cover}#camera-panel{margin-top:14px}#camera-panel .button{margin-top:12px}}
+
+#camera-panel #camera-preview{margin-top:12px}
