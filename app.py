@@ -210,7 +210,7 @@ def thumbnail_bytes(path):
 
 
 def gallery_category(path):
-    """Classify public gallery photos; face search continues to use all files."""
+    """Classify photos eligible for the gallery and face search."""
     collection = path.parent.name
     match = re.search(r'\.(\d+)\.[^.]+$', path.name)
     if not match or collection not in {'Todos_Color', 'Todos_BN'}:
@@ -234,6 +234,11 @@ def selected():
         return json.loads((DATA / 'selected.json').read_text())
     except (FileNotFoundError, ValueError):
         return [photo_id for photo_id, path in photos().items() if gallery_category(path)]
+
+
+def gallery_photo_ids(available):
+    return [photo_id for photo_id in selected()
+            if photo_id in available and gallery_category(available[photo_id])]
 
 
 def admin_required(fn):
@@ -282,7 +287,7 @@ def gallery_page():
 @app.get('/api/gallery')
 def gallery():
     available = photos()
-    chosen = [i for i in selected() if i in available and gallery_category(available[i])]
+    chosen = gallery_photo_ids(available)
     result = items(chosen)
     for item in result:
         item['category'] = gallery_category(available[item['id']])
@@ -316,9 +321,10 @@ def match():
         index = json.loads((DATA / 'faces.json').read_text())
     except FileNotFoundError:
         return jsonify(error='Las fotos aún se están preparando. Ponte en contacto con los organizadores.'), 503
+    gallery_ids = set(gallery_photo_ids(photos()))
     matches = []
     for entry in index:
-        if entry['encodings'] and min(face_recognition.face_distance(np.array(entry['encodings']), encodings[0])) <= FACE_DISTANCE_THRESHOLD:
+        if entry['id'] in gallery_ids and entry['encodings'] and min(face_recognition.face_distance(np.array(entry['encodings']), encodings[0])) <= FACE_DISTANCE_THRESHOLD:
             matches.append(entry['id'])
     return jsonify(items(matches))
 

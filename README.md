@@ -18,7 +18,7 @@ python index_photos.py
 python app.py
 ```
 
-Open http://127.0.0.1:5000. To choose public highlights, open http://127.0.0.1:5000/admin, enter any username and the `ADMIN_PASSWORD`, select photos, and save. By default, the public gallery includes the color and black-and-white collections, except color photos 48–129 and black-and-white photos 37–104. Those excluded files remain in face search. Gallery photos are grouped by breakfast, church, and banquet. The organizer page can further narrow the displayed selection. The index can take a long time for 1,116 photos; rerunning reuses entries for unchanged photos. Re-run after adding or changing photos. The index and selections are in `data/` and must be backed up privately. Do not commit photos or face data to a public repository.
+Open http://127.0.0.1:5000. To choose public highlights, open http://127.0.0.1:5000/admin, enter any username and the `ADMIN_PASSWORD`, select photos, and save. By default, the gallery includes the color and black-and-white collections, except color photos 48–129 and black-and-white photos 37–104. Face search uses only photos currently shown in the gallery, including any changes made in the organizer page. Gallery photos are grouped by breakfast, church, and banquet. The index can take a long time for 1,116 photos; rerunning reuses entries for unchanged photos. Re-run after adding or changing photos. The index and selections are in `data/` and must be backed up privately. Do not commit photos or face data to a public repository.
 
 On a phone, camera access requires HTTPS or localhost. The local server binds to this computer only. Use the phone's photo picker for initial testing after deployment, or configure HTTPS for a local network test.
 
