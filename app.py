@@ -219,7 +219,10 @@ def gallery_category(path):
     if collection == 'Todos_Color':
         if 48 <= number <= 129:
             return None
-        moment = 'desayuno' if number < 48 else 'iglesia' if number < 361 else 'banquete'
+        if number in {782, 783}:
+            moment = 'iglesia'
+        else:
+            moment = 'desayuno' if number < 48 else 'iglesia' if number < 361 else 'banquete' if number < 721 else 'baile'
         style = 'color'
     else:
         if 37 <= number <= 104:

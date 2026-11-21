@@ -230,7 +230,7 @@ const grid = (element, photos) => {
 };
 updateSelection();
 if (document.querySelector('#gallery-empty')) {
-const galleryGroups = ['desayuno-color', 'desayuno-bn', 'iglesia-color', 'iglesia-bn', 'banquete-color', 'banquete-bn'];
+const galleryGroups = ['desayuno-color', 'desayuno-bn', 'iglesia-color', 'iglesia-bn', 'banquete-color', 'banquete-bn', 'baile-color'];
 fetch('/api/gallery').then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(photos => {
   previewThumbnails.clear();
   previewPhotos = galleryGroups.flatMap(group => photos.filter(photo => photo.category === group));
@@ -239,7 +239,7 @@ fetch('/api/gallery').then(r => { if (!r.ok) throw new Error(); return r.json();
     grid(document.querySelector(`#gallery-${group}`), entries);
     document.querySelector(`#group-${group}`).hidden = entries.length === 0;
   }
-  for (const moment of ['desayuno', 'iglesia', 'banquete']) {
+  for (const moment of ['desayuno', 'iglesia', 'banquete', 'baile']) {
     document.querySelector(`#${moment}`).hidden = !photos.some(photo => photo.category.startsWith(moment + '-'));
   }
   document.querySelector('#gallery-empty').hidden = photos.length > 0;
