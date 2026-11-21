@@ -4,11 +4,13 @@ A mobile-friendly wedding gallery. Guests can submit a selfie to find matching p
 
 ## Run locally
 
-Requirements: Python 3.9 or newer, CMake, a C++ compiler, and internet access for the packages. On macOS, install Xcode Command Line Tools (`xcode-select --install`) and CMake (for example, `brew install cmake`). Building dlib, a face-recognition dependency, may take a while.
+Requirements: Python 3.13, CMake, a C++ compiler, and internet access for the packages. On macOS, install Xcode Command Line Tools (`xcode-select --install`) and CMake (for example, `brew install cmake libpng`). Building dlib, a face-recognition dependency, may take a while.
+
+If `.venv` was created with an older Python version, rename or remove it before creating the Python 3.13 environment.
 
 ```sh
 cd /Users/mimove/GitHub/fotos_boda
-python3 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export ADMIN_PASSWORD='choose-a-long-unique-password'
