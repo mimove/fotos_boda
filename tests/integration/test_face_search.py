@@ -1,123 +1,116 @@
 import io
 import json
-import sys
-import tempfile
-import types
-import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 from PIL import Image
+import pytest
 import app
 
 
-class UploadTests(unittest.TestCase):
-    def setUp(self):
-        config = patch.dict(app.app.config, {'GUEST_PASSWORD': 'testpassword'})
-        config.start()
-        self.addCleanup(config.stop)
-        self.client = app.app.test_client()
-        with self.client.session_transaction() as session:
-            session['guest_auth'] = app.guest_token('testpassword')
-        self.modules = {'face_recognition': types.SimpleNamespace(face_encodings=lambda image: []),
-                        'numpy': types.SimpleNamespace(asarray=lambda image: image)}
-
-    def send_image(self, fmt):
-        data = io.BytesIO()
-        Image.new('RGB', (10, 10)).save(data, format=fmt)
-        data.seek(0)
-        with patch.dict(sys.modules, self.modules):
-            return self.client.post('/api/match', data={'selfie': (data, 'photo.jpg')})
-
-    def test_rejects_unsupported_image_format(self):
-        response = self.send_image('BMP')
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('JPEG', response.get_json()['error'])
-
-    def test_jpeg_reaches_face_detection(self):
-        response = self.send_image('JPEG')
-        self.assertIn('una sola cara', response.get_json()['error'])
-
-    def test_rejects_excessive_image_dimensions(self):
-        with patch.object(Image, 'MAX_IMAGE_PIXELS', 50):
-            response = self.send_image('JPEG')
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('megapíxeles', response.get_json()['error'])
-
-    def test_rejects_large_upload(self):
-        response = self.client.post('/api/match', data={'selfie': (io.BytesIO(b'x' * (12 * 1024 * 1024)), 'photo.jpg')})
-        self.assertEqual(response.status_code, 413)
+def image_file(fmt='JPEG'):
+    image = io.BytesIO()
+    Image.new('RGB', (10, 10)).save(image, fmt)
+    image.seek(0)
+    return image
 
 
+@pytest.fixture
+def client(monkeypatch, tmp_path):
+    monkeypatch.setattr(app, 'DATA', tmp_path)
+    monkeypatch.setitem(app.app.config, 'GUEST_PASSWORD', 'testpassword')
+    monkeypatch.setattr(app, 'face_embeddings', lambda image: [np.array([1., 0.])])
+    client = app.app.test_client()
+    with client.session_transaction() as session:
+        session['guest_auth'] = app.guest_token('testpassword')
+    return client
 
-class FaceMatchingTests(unittest.TestCase):
-    def test_matches_within_relaxed_distance_and_excludes_more_distant_faces(self):
-        with tempfile.TemporaryDirectory() as directory:
-            index = [
-                {'id': 'near', 'encodings': [[0.59] + [0.0] * 127]},
-                {'id': 'far', 'encodings': [[0.61] + [0.0] * 127]},
-            ]
-            (Path(directory) / 'faces.json').write_text(json.dumps(index))
-            fake_face = types.SimpleNamespace(
-                face_encodings=lambda image: [np.zeros(128)],
-                face_distance=lambda encodings, face: np.linalg.norm(encodings - face, axis=1),
-            )
-            available = {'near': Path('/photos/Todos_Color/Ana y Miguel.0130.JPG'),
-                         'far': Path('/photos/Todos_Color/Ana y Miguel.0131.JPG')}
-            with patch.object(app, 'DATA', Path(directory)), patch.dict(app.app.config, {'GUEST_PASSWORD': 'testpassword'}), \
-                    patch.dict(sys.modules, {'face_recognition': fake_face}), patch.object(app, 'photos', return_value=available), \
-                    patch.object(app, 'selected', return_value=['near', 'far']), patch.object(app, 'items', side_effect=lambda ids: ids):
-                client = app.app.test_client()
-                with client.session_transaction() as session:
-                    session['guest_auth'] = app.guest_token('testpassword')
-                image = io.BytesIO()
-                Image.new('RGB', (10, 10)).save(image, 'JPEG')
-                image.seek(0)
-                response = client.post('/api/match', data={'selfie': (image, 'selfie.jpg')})
-                self.assertEqual(response.status_code, 200)
-                self.assertEqual(response.get_json(), ['near'])
 
-    def test_face_search_contains_only_current_gallery_selection(self):
-        available = {
-            'color_before': Path('/photos/Todos_Color/Ana y Miguel.0047.JPG'),
-            'color_start': Path('/photos/Todos_Color/Ana y Miguel.0048.JPG'),
-            'color_end': Path('/photos/Todos_Color/Ana y Miguel.0129.JPG'),
-            'color_after': Path('/photos/Todos_Color/Ana y Miguel.0130.JPG'),
-            'bw_before': Path('/photos/Todos_BN/Ana y Miguel.0036.JPG'),
-            'bw_start': Path('/photos/Todos_BN/Ana y Miguel.0037.JPG'),
-            'bw_end': Path('/photos/Todos_BN/Ana y Miguel.0104.JPG'),
-            'bw_after': Path('/photos/Todos_BN/Ana y Miguel.0105.JPG'),
-            'album': Path('/photos/Album/Ana y Miguel.0001.JPG'),
-            'unselected': Path('/photos/Todos_Color/Ana y Miguel.0234.JPG'),
-        }
-        chosen = [key for key in available if key != 'unselected'] + ['missing']
-        fake_face = types.SimpleNamespace(face_encodings=lambda image: [np.zeros(128)],
-                                          face_distance=lambda encodings, face: np.linalg.norm(encodings - face, axis=1))
-        with tempfile.TemporaryDirectory() as directory:
-            directory = Path(directory)
-            (directory / 'faces.json').write_text(json.dumps([
-                {'id': key, 'encodings': [[0.0] * 128]} for key in available
-            ]))
-            (directory / 'selected.json').write_text(json.dumps(chosen))
-            with patch.object(app, 'DATA', directory), patch.dict(app.app.config, {'GUEST_PASSWORD': 'testpassword'}), \
-                    patch.dict(sys.modules, {'face_recognition': fake_face}), patch.object(app, 'photos', return_value=available):
-                client = app.app.test_client()
-                with client.session_transaction() as session:
-                    session['guest_auth'] = app.guest_token('testpassword')
+def test_upload_validation(client, monkeypatch):
+    response = client.post('/api/match', data={'selfie': (image_file('BMP'), 'photo.jpg')})
+    assert response.status_code == 400
+    with patch.object(Image, 'MAX_IMAGE_PIXELS', 50):
+        response = client.post('/api/match', data={'selfie': (image_file(), 'photo.jpg')})
+    assert response.status_code == 400
+    response = client.post('/api/match', data={'selfie': (io.BytesIO(b'x' * (12 * 1024 * 1024)), 'photo.jpg')})
+    assert response.status_code == 413
+    monkeypatch.setattr(app, 'face_embeddings', lambda image: [])
+    response = client.post('/api/match', data={'selfie': (image_file(), 'photo.jpg')})
+    assert response.status_code == 400
+    assert 'una sola cara' in response.get_json()['error']
+    monkeypatch.setattr(app, 'face_embeddings', lambda image: [np.ones(2), np.ones(2)])
+    response = client.post('/api/match', data={'selfie': (image_file(), 'photo.jpg')})
+    assert response.status_code == 400
 
-                def matching_ids():
-                    image = io.BytesIO()
-                    Image.new('RGB', (10, 10)).save(image, 'JPEG')
-                    image.seek(0)
-                    response = client.post('/api/match', data={'selfie': (image, 'selfie.jpg')})
-                    self.assertEqual(response.status_code, 200)
-                    return {item['id'] for item in response.get_json()}
 
-                expected = {'color_before', 'color_after', 'bw_before', 'bw_after'}
-                self.assertEqual({item['id'] for item in client.get('/api/gallery').get_json()}, expected)
-                self.assertEqual(matching_ids(), expected)
-                (directory / 'selected.json').write_text(json.dumps([key for key in chosen if key != 'color_before']))
-                expected.remove('color_before')
-                self.assertEqual({item['id'] for item in client.get('/api/gallery').get_json()}, expected)
-                self.assertEqual(matching_ids(), expected)
+def test_match_uses_cosine_and_current_gallery_selection(client, monkeypatch, tmp_path):
+    available = {
+        'match': Path('/photos/Todos_Color/Ana y Miguel.0130.JPG'),
+        'distant': Path('/photos/Todos_Color/Ana y Miguel.0131.JPG'),
+        'excluded': Path('/photos/Todos_Color/Ana y Miguel.0048.JPG'),
+        'unselected': Path('/photos/Todos_Color/Ana y Miguel.0234.JPG'),
+    }
+    index = {'model': app.INDEX_MODEL, 'photos': [
+        {'id': 'match', 'encodings': [[.6, .8]]},
+        {'id': 'distant', 'encodings': [[.4, (1 - .4 ** 2) ** .5]]},
+        {'id': 'excluded', 'encodings': [[1, 0]]},
+        {'id': 'unselected', 'encodings': [[1, 0]]},
+    ]}
+    (tmp_path / app.INDEX_NAME).write_text(json.dumps(index))
+    (tmp_path / 'selected.json').write_text(json.dumps(['match', 'distant', 'excluded']))
+    monkeypatch.setattr(app, 'photos', lambda: available)
+    response = client.post('/api/match', data={'selfie': (image_file(), 'photo.jpg')})
+    assert response.status_code == 200
+    assert [item['id'] for item in response.get_json()] == ['match']
+    (tmp_path / 'selected.json').write_text(json.dumps(['distant']))
+    response = client.post('/api/match', data={'selfie': (image_file(), 'photo.jpg')})
+    assert response.get_json() == []
+
+
+def test_missing_or_wrong_model_index_fails_closed(client, tmp_path):
+    for content in [None, {'model': 'old-dlib', 'photos': []}]:
+        if content is not None:
+            (tmp_path / app.INDEX_NAME).write_text(json.dumps(content))
+        response = client.post('/api/match', data={'selfie': (image_file(), 'photo.jpg')})
+        assert response.status_code == 503
+
+
+def test_real_model_end_to_end_when_reference_available(monkeypatch, tmp_path):
+    import os
+    import face_engine
+    photo = os.environ.get('EVAL_REFERENCE_PHOTO')
+    if not photo:
+        pytest.skip('Set EVAL_REFERENCE_PHOTO for real face-search integration test')
+    monkeypatch.setattr(app, 'DATA', tmp_path)
+    monkeypatch.setitem(app.app.config, 'GUEST_PASSWORD', 'testpassword')
+    monkeypatch.setattr(app, 'photos', lambda: {'photo': Path('/photos/Todos_Color/Ana y Miguel.0130.JPG')})
+    with Image.open(photo) as source:
+        reference = app.ImageOps.exif_transpose(source).convert('RGB')
+    reference.thumbnail((1600, 1600))
+    features = face_engine.face_embeddings(reference)
+    assert len(features) == 1
+    (tmp_path / app.INDEX_NAME).write_text(json.dumps({
+        'model': app.INDEX_MODEL,
+        'photos': [{'id': 'photo', 'encodings': [features[0].tolist()]}],
+    }))
+    (tmp_path / 'selected.json').write_text(json.dumps(['photo']))
+    client = app.app.test_client()
+    with client.session_transaction() as session:
+        session['guest_auth'] = app.guest_token('testpassword')
+    with open(photo, 'rb') as image:
+        response = client.post('/api/match', data={'selfie': (image, 'photo.jpg')})
+    assert response.status_code == 200
+    assert [item['id'] for item in response.get_json()] == ['photo']
+
+
+@pytest.mark.parametrize(('directory', 'number', 'allowed'), [
+    ('Todos_Color', 47, True), ('Todos_Color', 48, False),
+    ('Todos_Color', 129, False), ('Todos_Color', 130, True),
+    ('Todos_BN', 36, True), ('Todos_BN', 37, False),
+    ('Todos_BN', 104, False), ('Todos_BN', 105, True),
+    ('Album', 130, False),
+])
+def test_gallery_exclusion_boundaries(directory, number, allowed):
+    path = Path('/photos') / directory / f'Ana y Miguel.{number:04d}.JPG'
+    assert bool(app.gallery_category(path)) is allowed

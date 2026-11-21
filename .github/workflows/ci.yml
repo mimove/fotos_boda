@@ -18,7 +18,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      CMAKE_BUILD_PARALLEL_LEVEL: '2'
       OPENBLAS_NUM_THREADS: '1'
     steps:
       - name: Check out code
@@ -35,11 +34,16 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake libopenblas-dev liblapack-dev libjavascriptcoregtk-bin
+          sudo apt-get install -y libjavascriptcoregtk-bin
           command -v jsc
       - name: Install Python dependencies
         run: python -m pip install -r requirements-dev.txt -r evaluation/requirements.txt
+      - name: Download verified face models
+        run: python download_models.py
       - name: Run tests
+        env:
+          EVAL_YUNET_MODEL: ${{ github.workspace }}/models/face_detection_yunet_2023mar.onnx
+          EVAL_SFACE_MODEL: ${{ github.workspace }}/models/face_recognition_sface_2021dec.onnx
         run: python -m pytest -q -rs tests
 
   image:
@@ -58,4 +62,4 @@ jobs:
           --env PHOTO_ROOT=/tmp
           --entrypoint python
           wedding-ci
-          -c "import app, face_recognition; print('Python and face recognition imports OK')"
+          -c "import app; from face_engine import _models; _models(); print('Python and face recognition models OK')"
