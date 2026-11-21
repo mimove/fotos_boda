@@ -2,5 +2,5 @@ Flask>=3.0,<4
 Pillow>=10,<12
 piexif>=1.1.3,<2
 numpy>=1.24,<3
-face-recognition>=1.3,<2
+opencv-python-headless==4.12.0.88
 gunicorn>=22,<24

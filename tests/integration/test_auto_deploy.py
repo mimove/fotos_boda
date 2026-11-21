@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 import unittest
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'deploy' / 'auto-deploy.sh'
+SCRIPT = Path(__file__).resolve().parents[2] / 'deploy' / 'auto-deploy.sh'
 
 
 class AutoDeployTests(unittest.TestCase):

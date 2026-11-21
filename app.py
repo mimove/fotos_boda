@@ -19,6 +19,7 @@ from pathlib import Path
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, session, url_for
 from PIL import Image, ImageOps
 import piexif
+from face_engine import INDEX_MODEL, INDEX_NAME, face_embeddings, cosine_matches
 
 ROOT = Path(__file__).resolve().parent
 PHOTO_ROOT = Path(os.environ.get('PHOTO_ROOT', ROOT / 'files')).resolve()
@@ -37,7 +38,6 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
 )
 EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
-FACE_DISTANCE_THRESHOLD = 0.60
 Image.MAX_IMAGE_PIXELS = 50_000_000
 XMP_HEADER = b'http://ns.adobe.com/xap/1.0/\x00'
 XMP_DATE_TAGS = rb'(?:photoshop:DateCreated|xmp:CreateDate|xmp:ModifyDate|xmp:MetadataDate|exif:DateTimeOriginal|exif:DateTimeDigitized|tiff:DateTime)'
@@ -300,11 +300,6 @@ def match():
     if not upload:
         return jsonify(error='Elige primero una foto.'), 400
     try:
-        import face_recognition
-        import numpy as np
-    except ImportError:
-        return jsonify(error='El reconocimiento facial aún no está disponible. Ponte en contacto con los organizadores.'), 503
-    try:
         with warnings.catch_warnings():
             warnings.simplefilter('error', Image.DecompressionBombWarning)
             with Image.open(upload.stream) as source:
@@ -312,19 +307,25 @@ def match():
                     raise ValueError('Unsupported image format or dimensions')
                 image = ImageOps.exif_transpose(source).convert('RGB')
         image.thumbnail((1600, 1600))
-        encodings = face_recognition.face_encodings(np.asarray(image))
     except (OSError, ValueError, Image.DecompressionBombError, Image.DecompressionBombWarning):
         return jsonify(error='No se puede leer la imagen. Usa un JPEG, PNG o WebP de hasta 50 megapíxeles.'), 400
+    try:
+        encodings = face_embeddings(image)
+    except Exception:
+        app.logger.exception('Face recognition unavailable')
+        return jsonify(error='El reconocimiento facial aún no está disponible. Ponte en contacto con los organizadores.'), 503
     if len(encodings) != 1:
         return jsonify(error='Usa una foto clara en la que aparezca una sola cara.'), 400
     try:
-        index = json.loads((DATA / 'faces.json').read_text())
-    except FileNotFoundError:
+        index = json.loads((DATA / INDEX_NAME).read_text())
+        if index.get('model') != INDEX_MODEL or not isinstance(index.get('photos'), list):
+            raise ValueError('Invalid face index')
+    except (OSError, ValueError, AttributeError):
         return jsonify(error='Las fotos aún se están preparando. Ponte en contacto con los organizadores.'), 503
     gallery_ids = set(gallery_photo_ids(photos()))
     matches = []
-    for entry in index:
-        if entry['id'] in gallery_ids and entry['encodings'] and min(face_recognition.face_distance(np.array(entry['encodings']), encodings[0])) <= FACE_DISTANCE_THRESHOLD:
+    for entry in index['photos']:
+        if entry['id'] in gallery_ids and cosine_matches(encodings[0], entry['encodings']):
             matches.append(entry['id'])
     return jsonify(items(matches))
 
